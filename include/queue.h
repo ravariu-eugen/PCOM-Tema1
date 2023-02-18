@@ -1,7 +1,13 @@
 #ifndef _QUEUE_H_
 #define _QUEUE_H_
-
-struct queue;
+#include "list.h"
+#include <stdlib.h>
+#include <assert.h>
+struct queue
+{
+	list head;
+	list tail;
+};
 typedef struct queue *queue;
 
 /* create an empty queue */

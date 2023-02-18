@@ -188,12 +188,59 @@ class FullNM(object):
                 router.cmd(cmd)
                 time.sleep(info.TIMEOUT / 2)
 
+    def setup_capture(self, testname, log):
+        nr = len(self.routers)
+        for i, (router, hosts) in enumerate(self.routers):
+            if_str = ""
+            for j, _ in enumerate(hosts):
+                hidx = i * len(hosts) + j
+                router_if = info.get("router_if_name", j)
+                if_str += f"-i {router_if} "
+
+            for j in range(nr):
+                if i == j:
+                    continue
+
+                f = min(i, j)
+                s = max(i, j)
+                ri_if = info.get("r2r_if_name", f, s)
+                if_str += f"-i {ri_if} "
+
+            pcap = f"router{i}.pcap"
+            pcap_file = os.path.join(log, pcap)
+
+            # tshark can only work if started from a folder owned by the
+            # launching user, even if that is root (!!!)
+            router.cmd(f"cd {log}")
+            try:
+                cmd = f"tshark {if_str} -w {pcap} &"
+                router.cmd(cmd)
+            finally:
+                router.cmd(f"cd -")
+
+    def teardown_capture(self, testname, log):
+        time.sleep(info.TIMEOUT / 2)
+        for i, (router, _) in enumerate(self.routers):
+            router.cmd("pkill tshark")
+
+            # Make it world-readable to not bother students with chmod or
+            # WS-as-root
+            pcap = f"router{i}.pcap"
+            pcap_file = os.path.join(log, pcap)
+            old_mask = os.umask(0)
+            try:
+                os.chmod(pcap_file, 0o666)
+            finally:
+                os.umask(old_mask)
+
     def run_test(self, testname):
         # restart router if dead
         self.start_routers()
 
         log = os.path.join(info.LOGDIR, testname)
         Path(log).mkdir(parents=True, exist_ok=True)
+
+        self.setup_capture(testname, log)
 
         test = tests.TESTS[testname]
         for hp in range(len(self.hosts)):
@@ -214,8 +261,11 @@ class FullNM(object):
                 --host={} &".format(testname, test.host_s)
         self.hosts[test.host_s].cmd(cmd)
 
+        self.teardown_capture(testname, log)
+
         results = {}
         time.sleep(info.TIMEOUT)
+
         for hp in range(len(self.hosts)):
             lout = os.path.join(log, info.get("output_file", hp))
             with open(lout, "r") as fin:
@@ -239,7 +289,7 @@ def should_skip(testname):
     return False
 
 
-def main(run_tests=False):
+def main(run_tests=False, run=None):
     topo = FullTopo(nr=info.N_ROUTERS, nh=info.N_HOSTSEACH)
 
     net = Mininet(topo)
@@ -249,8 +299,8 @@ def main(run_tests=False):
 
     nm.setup()
 
-    print("{:=^80}\n".format(" Running tests "))
     if run_tests:
+        print("{:=^80}\n".format(" Running tests "))
         for testname in tests.TESTS:
             skipped = False
 
@@ -265,7 +315,10 @@ def main(run_tests=False):
                 str_status = "SKIPPED"
             print("{: >20} {:.>50} {: >8}".format(testname, "", str_status))
             time.sleep(info.TIMEOUT / 2)
-
+    elif run is not None:
+        print("{:=^80}\n".format(f" Running test \"{run}\" "))
+        results = nm.run_test(run)
+        passed = validate_test_results(results)
     else:
         net.startTerms()
         signal.signal(signal.SIGINT, signal_handler)
@@ -279,6 +332,11 @@ if __name__ == "__main__":
     # Tell mininet to print useful information
     if len(sys.argv) > 1 and sys.argv[1] == "tests":
         main(run_tests=True)
+    elif len(sys.argv) > 1 and sys.argv[1] == "run":
+        assert(len(sys.argv) > 2), "Usage: python3 topo.py run <testname>"
+        testname = sys.argv[2]
+        assert(testname in tests.TESTS.keys()), "Unknown test name!"
+        main(run=testname)
     else:
         setLogLevel("info")
         main()

@@ -1,5 +1,5 @@
 PROJECT=router
-SOURCES=router.c queue.c list.c skel.c
+SOURCES=router.c queue.c list.c skel.c ip_trie.c
 LIBRARY=nope
 INCPATHS=include
 LIBPATHS=.
@@ -22,6 +22,12 @@ $(BINARY): $(OBJECTS)
 
 .c.o:
 	$(CC) $(INCFLAGS) $(CFLAGS) -fPIC $< -o $@
+
+run_router0: router
+	./router  rtable0.txt rr-0-1 r-0 r-1
+
+run_router1: router
+	./router  rtable1.txt rr-0-1 r-0 r-1
 
 distclean: clean
 	rm -f $(BINARY)

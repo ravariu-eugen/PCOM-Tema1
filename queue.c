@@ -1,13 +1,7 @@
 #include "queue.h"
-#include "list.h"
-#include <stdlib.h>
-#include <assert.h>
 
-struct queue
-{
-	list head;
-	list tail;
-};
+
+
 
 queue queue_create(void)
 {
